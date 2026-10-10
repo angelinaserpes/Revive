@@ -1,0 +1,136 @@
+@import url('https://fonts.googleapis.com/css2?family=Cardo:wght@400&family=Nunito+Sans:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-forest: #2D5016;
+  --color-forest-deep: #1A3409;
+  --color-forest-light: #3D6B20;
+  --color-sage: #5C8A44;
+  --color-sage-light: #7BAF60;
+  --color-leaf: #9CC982;
+  --color-mint: #D4EBC8;
+  --color-cream: #F5F0E8;
+  --color-cream-dark: #EDE8DC;
+  --color-sand: #D4C5A9;
+  --color-earth: #8B6347;
+  --color-warm: #FAF7F2;
+  --color-bark: #4A3728;
+  --font-display: 'Cardo', Georgia, serif;
+  --font-body: 'Nunito Sans', system-ui, sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: #F5F0E8;
+  color: #2D5016;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-style: normal !important;
+  font-weight: 400 !important;
+}
+
+h1 *, h2 *, h3 *, h4 *, h5 *, h6 * {
+  font-style: normal !important;
+  font-weight: 400 !important;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4C5A9;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #5C8A44;
+}
+
+.announcement-scroll {
+  animation: marquee 28s linear infinite;
+  white-space: nowrap;
+}
+
+.hero-strip-scroll {
+  animation: marquee 34s linear infinite;
+  width: max-content;
+  will-change: transform;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.cart-slide {
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.product-card:hover .product-img {
+  transform: scale(1.04);
+}
+
+.product-img {
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.product-card:hover .card-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.card-actions {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-backdrop {
+  animation: backdropIn 0.3s ease forwards;
+}
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.point-pulse {
+  animation: pointPulse 2s ease-in-out infinite;
+}
+
+@keyframes pointPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@media (max-width: 768px) {
+  .hide-mobile { display: none; }
+}
+
+@media (min-width: 769px) {
+  .hide-desktop { display: none; }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Shop sustainable products and earn rewards by recycling waste with a mobile-friendly platform that tracks your environmental impact and promotes zero-waste living.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
