@@ -1,25 +1,27 @@
 # Revive 🌿
 
-**Eco-friendly sustainable shopping app** — HSSM301 Product Design group project, FCRIT Mumbai.
+**Eco-friendly sustainable shopping app** — live at [revive-mu-khaki.vercel.app](https://revive-mu-khaki.vercel.app)
 
-Revive is a concept e-commerce platform focused on sustainable and eco-friendly products, featuring a green loyalty points system that rewards conscious purchasing.
+Revive is a concept e-commerce platform for sustainable products. Users earn Green Points for every eco-conscious purchase, can track orders in real time, and go through a smooth checkout flow — all wrapped in a natural, earthy UI.
 
 ## Features
 
 - Product catalog with eco-friendly categories
-- Shopping cart & checkout flow
-- Order tracking
+- Shopping cart & full checkout flow
+- Real-time order tracking
 - Green Points loyalty system
-- Smooth animations & responsive design
+- Responsive design with smooth animations
 
 ## Stack
 
-- **React 19** + TypeScript
-- **Tailwind CSS v4**
-- **Vite 8**
-- lucide-react icons
+| | |
+|---|---|
+| Framework | React 19 + TypeScript |
+| Styling | Tailwind CSS v4 |
+| Build | Vite 8 |
+| Icons | lucide-react |
 
-## Getting Started
+## Run locally
 
 ```bash
 npm install
@@ -34,4 +36,4 @@ npm run build
 
 ---
 
-*Built for HSSM301 Product Design — FCRIT, Mumbai*
+*HSSM301 Product Design group project — FCRIT, Mumbai*
