@@ -5,7 +5,7 @@ import {
   Globe, Waves, Droplets, Wind, Sprout, Lightbulb, Image, MessageCircle,
   Briefcase, Play, Package, FileText, Archive, Cpu, Shirt, Package2,
   Home, MapPin, Clock, Award, Users, User, Eye, EyeOff, ShieldCheck, QrCode,
-  Mail, Lock, LogOut, Send
+  Mail, Lock, LogOut, Send, ChevronRight
 } from 'lucide-react'
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -59,6 +59,35 @@ interface Order {
   estimatedDelivery: string
   plasticAvoidedKg: number
   co2SavedKg: number
+}
+
+interface SavedUser {
+  isLoggedIn: boolean
+  customerName: string
+  email: string
+  greenPoints: number
+}
+
+const SAVED_USER_KEY = 'revive-user'
+
+function loadSavedUser(): SavedUser {
+  const fallback = { isLoggedIn: false, customerName: '', email: '', greenPoints: 120 }
+  try {
+    const stored = localStorage.getItem(SAVED_USER_KEY)
+    if (!stored) return fallback
+    const parsed = JSON.parse(stored) as Partial<SavedUser>
+    if (parsed.isLoggedIn !== true || typeof parsed.customerName !== 'string' || typeof parsed.email !== 'string' || typeof parsed.greenPoints !== 'number') {
+      return fallback
+    }
+    return {
+      isLoggedIn: true,
+      customerName: parsed.customerName,
+      email: parsed.email,
+      greenPoints: parsed.greenPoints,
+    }
+  } catch {
+    return fallback
+  }
 }
 
 /* ─── Mock Data ──────────────────────────────────────────────────────────── */
@@ -1249,7 +1278,7 @@ function RecycleModal({ onClose, onScheduled }: { onClose: () => void; onSchedul
 }
 
 /* ─── Login ─────────────────────────────────────────────────────────────── */
-function LoginPage({ onBack, onLogin, onForgotPassword }: { onBack: () => void; onLogin: (name: string, isNewAccount: boolean) => void; onForgotPassword: () => void }) {
+function LoginPage({ onBack, onLogin, onForgotPassword }: { onBack: () => void; onLogin: (name: string, email: string, isNewAccount: boolean) => void; onForgotPassword: () => void }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -1282,7 +1311,7 @@ function LoginPage({ onBack, onLogin, onForgotPassword }: { onBack: () => void; 
       return
     }
     setError('')
-    onLogin(mode === 'signup' ? name.trim().split(' ')[0] : email.split('@')[0].split(/[._-]/)[0] || 'Member', mode === 'signup')
+    onLogin(mode === 'signup' ? name.trim() : email.split('@')[0].split(/[._-]/)[0] || 'Member', email.trim(), mode === 'signup')
   }
 
   const switchMode = (nextMode: 'login' | 'signup') => {
@@ -1673,6 +1702,66 @@ type ChatMessage = {
   text: string
 }
 
+function ProfilePage({
+  name, email, greenPoints, onOrders, onPoints, onRecycle, onHelp, onAbout, onLogout,
+}: {
+  name: string
+  email: string
+  greenPoints: number
+  onOrders: () => void
+  onPoints: () => void
+  onRecycle: () => void
+  onHelp: () => void
+  onAbout: () => void
+  onLogout: () => void
+}) {
+  const actions = [
+    { label: 'My Orders', Icon: Package, action: onOrders },
+    { label: 'Green Points', Icon: Award, action: onPoints },
+    { label: 'Recycle & Earn', Icon: Recycle, action: onRecycle },
+    { label: 'Need Help', Icon: MessageCircle, action: onHelp },
+    { label: 'About Revive', Icon: Leaf, action: onAbout },
+  ]
+
+  return (
+    <main className="max-w-xl mx-auto px-4 py-8">
+      <section className="text-center mb-7">
+        <div className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl" style={{ backgroundColor: '#D4EBC8', color: '#1A3409', fontFamily: 'var(--font-display)' }}>
+          {(name.trim().charAt(0) || 'R').toUpperCase()}
+        </div>
+        <h1 className="text-3xl mb-1" style={{ color: '#1A3409' }}>{name}</h1>
+        <p className="text-sm" style={{ color: '#8B6347' }}>{email}</p>
+      </section>
+
+      <section className="rounded-2xl p-5 mb-6 flex items-center justify-between" style={{ backgroundColor: '#1A3409' }}>
+        <div>
+          <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#9CC982' }}>Green Points balance</p>
+          <p className="text-3xl" style={{ color: '#F5F0E8', fontFamily: 'var(--font-display)' }}>{greenPoints}</p>
+        </div>
+        <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(212,235,200,0.14)' }}>
+          <Leaf size={23} strokeWidth={1.5} color="#D4EBC8" />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border overflow-hidden mb-6" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }}>
+        {actions.map(({ label, Icon, action }) => (
+          <button key={label} onClick={action} className="w-full min-h-14 px-4 flex items-center gap-3 text-left border-b last:border-0" style={{ borderColor: '#EDE8DC', color: '#1A3409' }}>
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#EDE8DC' }}>
+              <Icon size={18} strokeWidth={1.5} color="#2D5016" />
+            </span>
+            <span className="flex-1 text-sm font-semibold">{label}</span>
+            <ChevronRight size={17} strokeWidth={1.5} color="#8B6347" />
+          </button>
+        ))}
+      </section>
+
+      <button onClick={onLogout} className="w-full min-h-14 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ backgroundColor: '#FAF7F2', borderColor: '#A0522D', color: '#A0522D' }}>
+        <LogOut size={18} strokeWidth={1.5} /> Log out
+      </button>
+    </main>
+  )
+}
+
 function SupportChatPage({ onBack }: { onBack: () => void }) {
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -1872,13 +1961,14 @@ function AboutPage({ onShop, onRecycle }: { onShop: () => void; onRecycle: () =>
 
 /* ─── App ────────────────────────────────────────────────────────────────── */
 export default function App() {
+  const [savedUser] = useState(loadSavedUser)
   const [cart, setCart] = useState<CartItem[]>([])
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [recycleOpen, setRecycleOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState('all')
-  const [greenPoints, setGreenPoints] = useState(120)
+  const [greenPoints, setGreenPoints] = useState(savedUser.greenPoints)
   const [usePoints, setUsePoints] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [toastMsg, setToastMsg] = useState('')
@@ -1890,11 +1980,23 @@ export default function App() {
   const [loginView, setLoginView] = useState(false)
   const [aboutView, setAboutView] = useState(false)
   const [supportChatView, setSupportChatView] = useState(false)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [customerName, setCustomerName] = useState('')
+  const [profileView, setProfileView] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(savedUser.isLoggedIn)
+  const [customerName, setCustomerName] = useState(savedUser.customerName)
+  const [customerEmail, setCustomerEmail] = useState(savedUser.email)
+  const [loginDestination, setLoginDestination] = useState<'home' | 'orders' | 'profile'>('home')
   const [newsletterEmail, setNewsletterEmail] = useState('')
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0)
+
+  useEffect(() => {
+    if (!isLoggedIn) return
+    try {
+      localStorage.setItem(SAVED_USER_KEY, JSON.stringify({ isLoggedIn, customerName, email: customerEmail, greenPoints }))
+    } catch {
+      // Persistence can be unavailable in private browsing or restricted environments.
+    }
+  }, [isLoggedIn, customerName, customerEmail, greenPoints])
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
@@ -1933,6 +2035,7 @@ export default function App() {
     setLoginView(false)
     setAboutView(false)
     setSupportChatView(false)
+    setProfileView(false)
     setActiveNav('orders')
     setMobileMenuOpen(false)
   }
@@ -1944,6 +2047,7 @@ export default function App() {
     setLoginView(false)
     setAboutView(false)
     setSupportChatView(false)
+    setProfileView(false)
     setActiveNav('shop')
     setMobileMenuOpen(false)
   }
@@ -1972,13 +2076,22 @@ export default function App() {
     setSelectedOrder(null)
     setGreenPointsView(false)
     setSupportChatView(false)
+    setProfileView(false)
     setActiveNav('about')
     setMobileMenuOpen(false)
   }
 
   const logout = () => {
+    try {
+      localStorage.removeItem(SAVED_USER_KEY)
+    } catch {
+      // Logout still completes when storage is unavailable.
+    }
     setIsLoggedIn(false)
     setCustomerName('')
+    setCustomerEmail('')
+    setGreenPoints(120)
+    setProfileView(false)
     openShop()
     showToast('You have been logged out')
   }
@@ -1995,9 +2108,20 @@ export default function App() {
   }
 
   const openProfile = () => {
-    if (isLoggedIn) openOrders()
+    if (isLoggedIn) {
+      setProfileView(true)
+      setLoginView(false)
+      setOrdersView(false)
+      setSelectedOrder(null)
+      setGreenPointsView(false)
+      setAboutView(false)
+      setSupportChatView(false)
+      setActiveNav('profile')
+    }
     else {
+      setLoginDestination('profile')
       setLoginView(true)
+      setProfileView(false)
       setAboutView(false)
       setOrdersView(false)
       setSelectedOrder(null)
@@ -2005,6 +2129,34 @@ export default function App() {
       setSupportChatView(false)
       setActiveNav('login')
     }
+  }
+
+  const openPoints = () => {
+    setGreenPointsView(true)
+    setOrdersView(false)
+    setSelectedOrder(null)
+    setLoginView(false)
+    setAboutView(false)
+    setSupportChatView(false)
+    setProfileView(false)
+    setActiveNav('rewards')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const openProtectedOrders = () => {
+    if (isLoggedIn) {
+      openOrders()
+      return
+    }
+    setLoginDestination('orders')
+    setLoginView(true)
+    setProfileView(false)
+    setOrdersView(false)
+    setSelectedOrder(null)
+    setGreenPointsView(false)
+    setAboutView(false)
+    setSupportChatView(false)
+    setActiveNav('login')
   }
 
   const handleFooterLink = (link: string) => {
@@ -2064,6 +2216,24 @@ export default function App() {
           ))}
         </div>
       </div>
+
+      {/* Mobile App Header */}
+      <header className="md:hidden sticky top-0 z-30 h-14 px-4 border-b flex items-center justify-between" style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9' }}>
+        <button onClick={() => { openShop(); setActiveNav('home'); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="flex items-center gap-2" aria-label="Go to Revive home">
+          <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: '#2D5016' }}>
+            <Leaf size={16} strokeWidth={1.5} color="#D4EBC8" />
+          </span>
+          <span className="text-xl" style={{ color: '#1A3409', fontFamily: 'var(--font-display)' }}>Revive</span>
+        </button>
+        <button onClick={() => setIsCartOpen(true)} className="relative w-11 h-11 rounded-full flex items-center justify-center" style={{ color: '#1A3409' }} aria-label={`Open cart with ${cartCount} items`}>
+          <ShoppingBag size={22} strokeWidth={1.5} color="#1A3409" />
+          {cartCount > 0 && (
+            <span className="absolute top-0 right-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center" style={{ backgroundColor: '#5C8A44', color: 'white' }}>
+              {cartCount}
+            </span>
+          )}
+        </button>
+      </header>
 
       {/* Header */}
       <header className="hidden md:block sticky top-0 z-30 border-b" style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9' }}>
@@ -2137,6 +2307,7 @@ export default function App() {
                   if (isLoggedIn) {
                     openOrders()
                   } else {
+                    setLoginDestination('home')
                     setLoginView(true)
                     setAboutView(false)
                     setOrdersView(false)
@@ -2196,6 +2367,7 @@ export default function App() {
                     setMobileMenuOpen(false)
                     if (isLoggedIn) openOrders()
                     else {
+                      setLoginDestination('home')
                       setLoginView(true)
                       setAboutView(false)
                       setOrdersView(false)
@@ -2232,18 +2404,45 @@ export default function App() {
       {/* ── Green Points Dashboard ──────────────────────────────────────── */}
       {loginView ? (
         <LoginPage
-          onBack={openShop}
+          onBack={() => { setLoginDestination('home'); openShop() }}
           onForgotPassword={() => showToast('Password reset instructions have been sent to your email')}
-          onLogin={(name, isNewAccount) => {
+          onLogin={(name, email, isNewAccount) => {
             const formattedName = name.charAt(0).toUpperCase() + name.slice(1)
             setCustomerName(formattedName)
+            setCustomerEmail(email)
             setIsLoggedIn(true)
-            openShop()
+            if (loginDestination === 'orders') {
+              openOrders()
+            } else if (loginDestination === 'profile') {
+              setLoginView(false)
+              setProfileView(true)
+              setOrdersView(false)
+              setSelectedOrder(null)
+              setGreenPointsView(false)
+              setAboutView(false)
+              setSupportChatView(false)
+              setActiveNav('profile')
+            } else {
+              openShop()
+            }
+            setLoginDestination('home')
             showToast(isNewAccount ? `Account created! Welcome, ${formattedName}` : `Welcome back, ${formattedName}`)
           }}
         />
       ) : supportChatView ? (
         <SupportChatPage onBack={() => setSupportChatView(false)} />
+      ) : profileView && isLoggedIn ? (
+        <ProfilePage
+          name={customerName}
+          email={customerEmail}
+          greenPoints={greenPoints}
+          onOrders={openOrders}
+          onPoints={openPoints}
+          onRecycle={() => setRecycleOpen(true)}
+          onHelp={() => setSupportChatView(true)}
+          onAbout={openAbout}
+          onLogout={logout}
+        />
       ) : aboutView ? (
         <AboutPage onShop={openShop} onRecycle={() => setRecycleOpen(true)} />
       ) : selectedOrder ? (
@@ -2263,7 +2462,7 @@ export default function App() {
       ) : greenPointsView ? (
         <main className="max-w-5xl mx-auto px-4 sm:px-6 py-12">
           <div className="flex items-center gap-3 mb-8">
-            <button onClick={() => setGreenPointsView(false)} className="text-sm font-medium flex items-center gap-1" style={{ color: '#5C8A44' }}>
+            <button onClick={openShop} className="text-sm font-medium flex items-center gap-1" style={{ color: '#5C8A44' }}>
               <ArrowLeft size={14} strokeWidth={1.5} color="#5C8A44" /> Back
             </button>
             <h2 className="text-3xl font-semibold" style={{ fontFamily: 'var(--font-display)', color: '#1A3409' }}>Your Green Dashboard</h2>
@@ -2663,15 +2862,15 @@ export default function App() {
         {[
           { id: 'home', label: 'Home', Icon: Home, action: () => { openShop(); setActiveNav('home'); window.scrollTo({ top: 0, behavior: 'smooth' }) } },
           { id: 'shop', label: 'Shop', Icon: Leaf, action: () => { openShop(); window.setTimeout(() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }), 0) } },
-          { id: 'cart', label: 'Cart', Icon: ShoppingBag, action: () => setIsCartOpen(true) },
+          { id: 'rewards', label: 'Points', Icon: Award, action: openPoints },
+          { id: 'orders', label: 'Orders', Icon: Package, action: openProtectedOrders },
           { id: 'profile', label: 'Profile', Icon: User, action: openProfile },
         ].map(item => {
-          const isActive = item.id === 'cart' ? isCartOpen : item.id === 'profile' ? loginView || ordersView || Boolean(selectedOrder) : activeNav === item.id
+          const isActive = activeNav === item.id
           return (
             <button key={item.id} onClick={item.action} className="relative flex-1 min-h-16 flex flex-col items-center justify-center gap-1 text-xs font-semibold" style={{ color: isActive ? '#1A3409' : '#8B6347' }}>
               <item.Icon size={21} strokeWidth={1.5} color={isActive ? '#2D5016' : '#8B6347'} />
               {item.label}
-              {item.id === 'cart' && cartCount > 0 && <span className="absolute top-1.5 left-1/2 ml-2 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ backgroundColor: '#5C8A44', color: 'white' }}>{cartCount}</span>}
             </button>
           )
         })}
