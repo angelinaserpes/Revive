@@ -2773,13 +2773,13 @@ export default function App() {
               <p className="text-sm mb-8" style={{ color: '#A8C496', maxWidth: 420, margin: '0 auto 32px' }}>
                 Get eco tips, new arrivals, recycling guides, and exclusive Green Point bonus events — straight to your inbox.
               </p>
-              <div className="flex gap-3 max-w-md mx-auto">
+              <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
                 <input
                   type="email"
                   value={newsletterEmail}
                   onChange={e => setNewsletterEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
+                  className="flex-1 min-w-0 w-full px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ backgroundColor: 'rgba(245,240,232,0.15)', color: '#F5F0E8', border: '1.5px solid rgba(212,235,200,0.3)', fontFamily: 'var(--font-body)' }}
                 />
                 <button
@@ -2791,7 +2791,7 @@ export default function App() {
                     setNewsletterEmail('')
                     showToast('You are subscribed to Revive updates')
                   }}
-                  className="px-6 py-3 rounded-xl font-semibold text-sm whitespace-nowrap flex items-center gap-2"
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-sm whitespace-nowrap flex items-center justify-center gap-2"
                   style={{ backgroundColor: '#D4EBC8', color: '#1A3409', fontFamily: 'var(--font-body)' }}
                 >
                   Subscribe <ArrowRight size={14} strokeWidth={2} color="#1A3409" />
