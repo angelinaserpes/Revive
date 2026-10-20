@@ -132,11 +132,12 @@ h1 *, h2 *, h3 *, h4 *, h5 *, h6 * {
   .hide-mobile { display: none; }
 
   .mobile-app-shell {
-    padding-bottom: 64px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
   .mobile-bottom-nav {
     padding-bottom: env(safe-area-inset-bottom);
+    height: calc(64px + env(safe-area-inset-bottom));
     box-shadow: 0 -8px 24px rgba(26, 52, 9, 0.08);
   }
 

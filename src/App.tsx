@@ -2659,7 +2659,7 @@ export default function App() {
         </>
       )}
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t mobile-bottom-nav" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }} aria-label="Mobile navigation">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 border-t mobile-bottom-nav flex items-stretch" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }} aria-label="Mobile navigation">
         {[
           { id: 'home', label: 'Home', Icon: Home, action: () => { openShop(); setActiveNav('home'); window.scrollTo({ top: 0, behavior: 'smooth' }) } },
           { id: 'shop', label: 'Shop', Icon: Leaf, action: () => { openShop(); window.setTimeout(() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }), 0) } },
