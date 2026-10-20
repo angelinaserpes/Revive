@@ -33,6 +33,7 @@ body {
   color: #2D5016;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -127,10 +128,28 @@ h1 *, h2 *, h3 *, h4 *, h5 *, h6 * {
   50% { transform: scale(1.05); }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .hide-mobile { display: none; }
+
+  .mobile-app-shell {
+    padding-bottom: 64px;
+  }
+
+  .mobile-bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -8px 24px rgba(26, 52, 9, 0.08);
+  }
+
+  .support-chat {
+    height: calc(100dvh - 144px);
+    min-height: 480px;
+  }
 }
 
 @media (min-width: 769px) {
   .hide-desktop { display: none; }
+
+  .support-chat {
+    height: 680px;
+  }
 }

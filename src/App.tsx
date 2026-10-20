@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Leaf, Recycle, Truck, Smartphone, RefreshCw, Star, X, ShoppingBag, Menu,
   ArrowRight, ArrowLeft, Check, CheckCircle, CreditCard, Banknote, Scale,
   Globe, Waves, Droplets, Wind, Sprout, Lightbulb, Image, MessageCircle,
   Briefcase, Play, Package, FileText, Archive, Cpu, Shirt, Package2,
-  Home, MapPin, Clock, Award, Users
+  Home, MapPin, Clock, Award, Users, User, Eye, EyeOff, ShieldCheck, QrCode,
+  Mail, Lock, LogOut, Send
 } from 'lucide-react'
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -361,6 +362,25 @@ function calcDiscount(greenPoints: number, subtotal: number) {
   return Math.min((usable / 100) * 50, subtotal)
 }
 
+function calculateCartTotals(
+  cart: CartItem[],
+  greenPoints: number,
+  usePoints: boolean,
+  payMode?: 'upi' | 'card' | 'cod',
+) {
+  const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0)
+  const discount = usePoints ? calcDiscount(greenPoints, subtotal) : 0
+  const shipping = subtotal >= 499 ? 0 : 49
+  const paymentFee = payMode === 'cod' ? 25 : 0
+  return {
+    subtotal,
+    discount,
+    shipping,
+    paymentFee,
+    total: subtotal - discount + shipping + paymentFee,
+  }
+}
+
 /* ─── Stars ──────────────────────────────────────────────────────────────── */
 function Stars({ rating }: { rating: number }) {
   return (
@@ -404,11 +424,9 @@ function ProductCard({
             {product.badge}
           </div>
         )}
-        <div
-          className="card-actions absolute bottom-3 left-3 right-3"
-          onClick={e => { e.stopPropagation(); onAddToCart(product) }}
-        >
+        <div className="card-actions absolute bottom-3 left-3 right-3">
           <button
+            onClick={e => { e.stopPropagation(); onAddToCart(product) }}
             className="w-full py-2.5 text-sm font-semibold rounded-lg transition-colors"
             style={{ backgroundColor: '#2D5016', color: '#F5F0E8', fontFamily: 'var(--font-body)' }}
           >
@@ -608,10 +626,7 @@ function CartSidebar({
   usePoints: boolean
   setUsePoints: (v: boolean) => void
 }) {
-  const subtotal = cart.reduce((s, i) => s + i.product.price * i.qty, 0)
-  const pointsDiscount = usePoints ? calcDiscount(greenPoints, subtotal) : 0
-  const shipping = subtotal >= 499 ? 0 : 49
-  const total = subtotal - pointsDiscount + shipping
+  const { subtotal, discount: pointsDiscount, shipping, total } = calculateCartTotals(cart, greenPoints, usePoints)
 
   return (
     <>
@@ -733,16 +748,35 @@ function CheckoutModal({
 }) {
   const [step, setStep] = useState(1)
   const [payMode, setPayMode] = useState<'upi' | 'card' | 'cod'>('upi')
+  const [upiMethod, setUpiMethod] = useState<'qr' | 'id'>('qr')
   const [upiId, setUpiId] = useState('')
+  const [card, setCard] = useState({ number: '', name: '', expiry: '', cvv: '' })
+  const [addressErrors, setAddressErrors] = useState<Record<string, string>>({})
   const [orderNo] = useState(() => 'REVIVE-' + Math.floor(10000 + Math.random() * 90000))
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null)
   const [address, setAddress] = useState({
-    name: 'Priya Sharma', phone: '98205 67842',
+    name: 'Priya Sharma', phone: '9820567842',
     flat: 'A-204, Greenview Apts', area: 'Andheri West, Mumbai', pin: '400053',
   })
-  const subtotal = cart.reduce((s, i) => s + i.product.price * i.qty, 0)
-  const discount = usePoints ? calcDiscount(greenPoints, subtotal) : 0
-  const total = subtotal - discount
+  const { subtotal, discount, shipping, paymentFee, total } = calculateCartTotals(cart, greenPoints, usePoints, payMode)
+  const upiIdValid = /^[\w.-]+@[\w.-]+$/.test(upiId.trim())
+  const cardValid =
+    card.number.replace(/\s/g, '').length === 16 &&
+    card.name.trim().length >= 3 &&
+    /^(0[1-9]|1[0-2])\/\d{2}$/.test(card.expiry) &&
+    /^\d{3}$/.test(card.cvv)
+  const paymentValid = payMode === 'cod' || (payMode === 'upi' && (upiMethod === 'qr' || upiIdValid)) || (payMode === 'card' && cardValid)
+
+  const continueToPayment = () => {
+    const errors: Record<string, string> = {}
+    if (!address.name.trim()) errors.name = 'Enter your full name.'
+    if (!/^[6-9]\d{9}$/.test(address.phone)) errors.phone = 'Enter a 10-digit phone number starting with 6, 7, 8 or 9.'
+    if (!address.flat.trim()) errors.flat = 'Enter your flat or building.'
+    if (!address.area.trim()) errors.area = 'Enter your area and city.'
+    if (!/^[1-9]\d{5}$/.test(address.pin)) errors.pin = 'Enter a valid 6-digit pincode that does not start with 0.'
+    setAddressErrors(errors)
+    if (Object.keys(errors).length === 0) setStep(2)
+  }
 
   const payOptions = [
     { id: 'upi' as const,  label: 'UPI Payment',         sub: 'Google Pay, PhonePe, Paytm', Icon: Smartphone  },
@@ -827,16 +861,26 @@ function CheckoutModal({
                     <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>{field.label}</label>
                     <input
                       value={(address as Record<string, string>)[field.key]}
-                      onChange={e => setAddress({ ...address, [field.key]: e.target.value })}
+                      type="text"
+                      inputMode={field.key === 'phone' || field.key === 'pin' ? 'numeric' : undefined}
+                      maxLength={field.key === 'phone' ? 10 : field.key === 'pin' ? 6 : undefined}
+                      onChange={e => {
+                        let value = e.target.value
+                        if (field.key === 'phone') value = value.replace(/\D/g, '').slice(0, 10)
+                        if (field.key === 'pin') value = value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6)
+                        setAddress({ ...address, [field.key]: value })
+                        if (addressErrors[field.key]) setAddressErrors(current => ({ ...current, [field.key]: '' }))
+                      }}
                       className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                      style={{ backgroundColor: '#EDE8DC', border: '1.5px solid #D4C5A9', color: '#1A3409', fontFamily: 'var(--font-body)' }}
+                      style={{ backgroundColor: '#EDE8DC', border: `1.5px solid ${addressErrors[field.key] ? '#A0522D' : '#D4C5A9'}`, color: '#1A3409', fontFamily: 'var(--font-body)' }}
                       onFocus={e => (e.target.style.borderColor = '#5C8A44')}
-                      onBlur={e => (e.target.style.borderColor = '#D4C5A9')}
+                      onBlur={e => (e.target.style.borderColor = addressErrors[field.key] ? '#A0522D' : '#D4C5A9')}
                     />
+                    {addressErrors[field.key] && <p className="text-xs mt-1.5" style={{ color: '#A0522D' }}>{addressErrors[field.key]}</p>}
                   </div>
                 ))}
               </div>
-              <button onClick={() => setStep(2)} className="w-full mt-6 py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2" style={{ backgroundColor: '#2D5016', color: '#F5F0E8', fontFamily: 'var(--font-body)' }}>
+              <button onClick={continueToPayment} className="w-full mt-6 py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2" style={{ backgroundColor: '#2D5016', color: '#F5F0E8', fontFamily: 'var(--font-body)' }}>
                 Continue to Payment <ArrowRight size={15} strokeWidth={2} />
               </button>
             </div>
@@ -848,15 +892,29 @@ function CheckoutModal({
               <h3 className="text-xl font-semibold mb-2" style={{ fontFamily: 'var(--font-display)', color: '#1A3409' }}>Payment</h3>
               <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#EDE8DC' }}>
                 <div className="flex justify-between text-sm mb-1">
-                  <span style={{ color: '#8B6347' }}>Order Total</span>
-                  <span style={{ color: '#1A3409', fontWeight: 700 }}>₹{total.toLocaleString('en-IN')}</span>
+                  <span style={{ color: '#8B6347' }}>Subtotal</span>
+                  <span style={{ color: '#1A3409' }}>₹{subtotal.toLocaleString('en-IN')}</span>
                 </div>
                 {usePoints && (
-                  <div className="flex justify-between text-sm">
-                    <span style={{ color: '#5C8A44' }}>Green Points Discount (100 pts = ₹50)</span>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span style={{ color: '#5C8A44' }}>Green Points discount</span>
                     <span style={{ color: '#5C8A44' }}>−₹{discount}</span>
                   </div>
                 )}
+                <div className="flex justify-between text-sm mb-1">
+                  <span style={{ color: '#8B6347' }}>Shipping</span>
+                  <span style={{ color: shipping === 0 ? '#5C8A44' : '#1A3409' }}>{shipping === 0 ? 'Free' : `₹${shipping}`}</span>
+                </div>
+                {paymentFee > 0 && (
+                  <div className="flex justify-between text-sm mb-1">
+                    <span style={{ color: '#8B6347' }}>Cash on delivery fee</span>
+                    <span style={{ color: '#1A3409' }}>₹{paymentFee}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-bold pt-2 mt-2 border-t" style={{ borderColor: '#D4C5A9' }}>
+                  <span style={{ color: '#1A3409' }}>Order total</span>
+                  <span style={{ color: '#1A3409' }}>₹{total.toLocaleString('en-IN')}</span>
+                </div>
               </div>
 
               <div className="space-y-2 mb-5">
@@ -881,19 +939,125 @@ function CheckoutModal({
 
               {payMode === 'upi' && (
                 <div className="mb-5">
-                  <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Enter UPI ID</label>
-                  <input
-                    value={upiId}
-                    onChange={e => setUpiId(e.target.value)}
-                    placeholder="yourname@upi"
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                    style={{ backgroundColor: '#EDE8DC', border: '1.5px solid #D4C5A9', color: '#1A3409', fontFamily: 'var(--font-body)' }}
-                    onFocus={e => (e.target.style.borderColor = '#5C8A44')}
-                    onBlur={e => (e.target.style.borderColor = '#D4C5A9')}
-                  />
-                  <div className="flex items-center gap-1 mt-2">
-                    <Lightbulb size={11} strokeWidth={1.5} color="#8B6347" />
-                    <p className="text-xs" style={{ color: '#8B6347' }}>e.g. priya@okaxis, 98205xxxxx@paytm</p>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    {[
+                      { id: 'qr' as const, label: 'Scan QR', Icon: QrCode },
+                      { id: 'id' as const, label: 'UPI ID', Icon: Smartphone },
+                    ].map(method => (
+                      <button
+                        key={method.id}
+                        onClick={() => setUpiMethod(method.id)}
+                        className="py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border-2"
+                        style={{ borderColor: upiMethod === method.id ? '#2D5016' : '#D4C5A9', color: '#1A3409', backgroundColor: upiMethod === method.id ? '#D4EBC8' : '#FAF7F2' }}
+                      >
+                        <method.Icon size={15} strokeWidth={1.5} /> {method.label}
+                      </button>
+                    ))}
+                  </div>
+                  {upiMethod === 'qr' ? (
+                    <div className="rounded-xl p-4 text-center border" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }}>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(`upi://pay?pa=payments@revive&pn=Revive&am=${total}&cu=INR`)}`}
+                        alt={`UPI QR code to pay ₹${total.toLocaleString('en-IN')}`}
+                        className="w-36 h-36 mx-auto mb-3 rounded-xl border"
+                        style={{ borderColor: '#D4C5A9' }}
+                      />
+                      <p className="text-sm font-semibold" style={{ color: '#1A3409' }}>Scan with any UPI app</p>
+                      <p className="text-xs mt-1" style={{ color: '#8B6347' }}>Pay ₹{total.toLocaleString('en-IN')} to Revive</p>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Enter UPI ID</label>
+                      <input
+                        value={upiId}
+                        onChange={e => setUpiId(e.target.value)}
+                        placeholder="yourname@upi"
+                        className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                        style={{ backgroundColor: '#EDE8DC', border: `1.5px solid ${upiId && !upiIdValid ? '#A0522D' : '#D4C5A9'}`, color: '#1A3409', fontFamily: 'var(--font-body)' }}
+                      />
+                      <div className="flex items-center gap-1 mt-2">
+                        <Lightbulb size={11} strokeWidth={1.5} color="#8B6347" />
+                        <p className="text-xs" style={{ color: '#8B6347' }}>e.g. priya@okaxis or 98205xxxxx@paytm</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {payMode === 'card' && (
+                <div className="mb-5 rounded-xl p-4 border" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm font-semibold" style={{ color: '#1A3409' }}>Card details</p>
+                    <div className="flex items-center gap-1 text-xs" style={{ color: '#5C8A44' }}>
+                      <ShieldCheck size={13} strokeWidth={1.5} /> Secure
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Card number</label>
+                      <input
+                        type="text"
+                        value={card.number}
+                        maxLength={19}
+                        onChange={e => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 16)
+                          setCard({ ...card, number: digits.replace(/(\d{4})(?=\d)/g, '$1 ') })
+                        }}
+                        inputMode="numeric"
+                        autoComplete="cc-number"
+                        placeholder="1234 5678 9012 3456"
+                        className="w-full px-4 py-3 rounded-xl text-sm outline-none border"
+                        style={{ backgroundColor: '#EDE8DC', borderColor: '#D4C5A9', color: '#1A3409' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Name on card</label>
+                      <input
+                        value={card.name}
+                        onChange={e => setCard({ ...card, name: e.target.value })}
+                        autoComplete="cc-name"
+                        placeholder="Priya Sharma"
+                        className="w-full px-4 py-3 rounded-xl text-sm outline-none border"
+                        style={{ backgroundColor: '#EDE8DC', borderColor: '#D4C5A9', color: '#1A3409' }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Expiry date</label>
+                        <input
+                          type="text"
+                          value={card.expiry}
+                          maxLength={5}
+                          onChange={e => {
+                            if (card.expiry.endsWith('/') && e.target.value === card.expiry.slice(0, -1)) {
+                              setCard({ ...card, expiry: card.expiry.slice(0, -2) })
+                              return
+                            }
+                            const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+                            setCard({ ...card, expiry: digits.length >= 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits })
+                          }}
+                          inputMode="numeric"
+                          autoComplete="cc-exp"
+                          placeholder="MM/YY"
+                          className="w-full px-4 py-3 rounded-xl text-sm outline-none border"
+                          style={{ backgroundColor: '#EDE8DC', borderColor: '#D4C5A9', color: '#1A3409' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>CVV</label>
+                        <input
+                          type="text"
+                          value={card.cvv}
+                          maxLength={3}
+                          onChange={e => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 3) })}
+                          inputMode="numeric"
+                          autoComplete="cc-csc"
+                          placeholder="123"
+                          className="w-full px-4 py-3 rounded-xl text-sm outline-none border"
+                          style={{ backgroundColor: '#EDE8DC', borderColor: '#D4C5A9', color: '#1A3409' }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -904,8 +1068,9 @@ function CheckoutModal({
                 </button>
                 <button
                   onClick={placeOrder}
+                  disabled={!paymentValid}
                   className="flex-1 py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
-                  style={{ backgroundColor: '#2D5016', color: '#F5F0E8', fontFamily: 'var(--font-body)' }}
+                  style={{ backgroundColor: '#2D5016', color: '#F5F0E8', fontFamily: 'var(--font-body)', opacity: paymentValid ? 1 : 0.5 }}
                 >
                   {payMode === 'cod' ? 'Confirm Order' : `Pay ₹${total.toLocaleString('en-IN')}`}
                   <ArrowRight size={15} strokeWidth={2} />
@@ -1080,6 +1245,208 @@ function RecycleModal({ onClose, onScheduled }: { onClose: () => void; onSchedul
         </div>
       </div>
     </div>
+  )
+}
+
+/* ─── Login ─────────────────────────────────────────────────────────────── */
+function LoginPage({ onBack, onLogin, onForgotPassword }: { onBack: () => void; onLogin: (name: string, isNewAccount: boolean) => void; onForgotPassword: () => void }) {
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
+  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = () => {
+    if (mode === 'signup' && name.trim().length < 2) {
+      setError('Enter your full name.')
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Enter a valid email address.')
+      return
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+    if (mode === 'signup' && password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    if (mode === 'signup' && !acceptTerms) {
+      setError('Please accept the Terms of Service and Privacy Policy.')
+      return
+    }
+    setError('')
+    onLogin(mode === 'signup' ? name.trim().split(' ')[0] : email.split('@')[0].split(/[._-]/)[0] || 'Member', mode === 'signup')
+  }
+
+  const switchMode = (nextMode: 'login' | 'signup') => {
+    setMode(nextMode)
+    setError('')
+    setPassword('')
+    setConfirmPassword('')
+    setShowPassword(false)
+  }
+
+  return (
+    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-14">
+      <button onClick={onBack} className="text-sm font-medium flex items-center gap-1 mb-6" style={{ color: '#5C8A44' }}>
+        <ArrowLeft size={14} strokeWidth={1.5} /> Back to shop
+      </button>
+      <div className="grid lg:grid-cols-[0.9fr_1.1fr] rounded-3xl overflow-hidden border shadow-sm" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }}>
+        <div className="p-7 sm:p-12 flex flex-col justify-center">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center mb-7" style={{ backgroundColor: '#D4EBC8' }}>
+            <Leaf size={21} strokeWidth={1.5} color="#2D5016" />
+          </div>
+          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: '#5C8A44' }}>
+            {mode === 'login' ? 'Welcome back' : 'Join Revive'}
+          </p>
+          <h1 className="text-4xl mb-3" style={{ color: '#1A3409' }}>
+            {mode === 'login' ? 'Continue your green journey' : 'Create your account'}
+          </h1>
+          <p className="text-sm leading-relaxed mb-8" style={{ color: '#8B6347' }}>
+            {mode === 'login'
+              ? 'Sign in to view your orders, manage Green Points, and schedule recycling pickups.'
+              : 'Start earning Green Points, tracking your impact, and making everyday choices count.'}
+          </p>
+
+          <div className="space-y-4">
+            {mode === 'signup' && (
+              <div className="fade-in">
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Full name</label>
+                <div className="relative">
+                  <User size={16} strokeWidth={1.5} color="#8B6347" className="absolute left-4 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    autoComplete="name"
+                    placeholder="Priya Sharma"
+                    className="w-full pl-11 pr-4 py-3.5 rounded-xl text-sm outline-none border"
+                    style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9', color: '#1A3409' }}
+                  />
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Email address</label>
+              <div className="relative">
+                <Mail size={16} strokeWidth={1.5} color="#8B6347" className="absolute left-4 top-1/2 -translate-y-1/2" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && submit()}
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className="w-full pl-11 pr-4 py-3.5 rounded-xl text-sm outline-none border"
+                  style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9', color: '#1A3409' }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-xs font-semibold" style={{ color: '#5C8A44' }}>Password</label>
+                {mode === 'login' && <button onClick={onForgotPassword} className="text-xs font-semibold" style={{ color: '#5C8A44' }}>Forgot password?</button>}
+              </div>
+              <div className="relative">
+                <Lock size={16} strokeWidth={1.5} color="#8B6347" className="absolute left-4 top-1/2 -translate-y-1/2" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && submit()}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  placeholder="Enter your password"
+                  className="w-full pl-11 pr-12 py-3.5 rounded-xl text-sm outline-none border"
+                  style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9', color: '#1A3409' }}
+                />
+                <button
+                  onClick={() => setShowPassword(value => !value)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={16} strokeWidth={1.5} color="#8B6347" /> : <Eye size={16} strokeWidth={1.5} color="#8B6347" />}
+                </button>
+              </div>
+            </div>
+            {mode === 'signup' && (
+              <div className="fade-in">
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5C8A44' }}>Confirm password</label>
+                <div className="relative">
+                  <Lock size={16} strokeWidth={1.5} color="#8B6347" className="absolute left-4 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && submit()}
+                    autoComplete="new-password"
+                    placeholder="Enter your password again"
+                    className="w-full pl-11 pr-4 py-3.5 rounded-xl text-sm outline-none border"
+                    style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9', color: '#1A3409' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between mt-4">
+            <button
+              onClick={() => mode === 'login' ? setRememberMe(value => !value) : setAcceptTerms(value => !value)}
+              className="flex items-start gap-2 text-xs text-left"
+              style={{ color: '#4A5C3C' }}
+            >
+              <span
+                className="w-4 h-4 mt-px rounded border flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: (mode === 'login' ? rememberMe : acceptTerms) ? '#2D5016' : 'transparent', borderColor: '#5C8A44' }}
+              >
+                {(mode === 'login' ? rememberMe : acceptTerms) && <Check size={10} strokeWidth={2.5} color="white" />}
+              </span>
+              {mode === 'login' ? 'Keep me signed in' : 'I agree to the Terms of Service and Privacy Policy'}
+            </button>
+            <span className="flex items-center gap-1 text-xs" style={{ color: '#8B6347' }}>
+              <ShieldCheck size={12} strokeWidth={1.5} /> Secure {mode === 'login' ? 'login' : 'sign up'}
+            </span>
+          </div>
+
+          {error && <p className="text-xs mt-4" style={{ color: '#A0522D' }}>{error}</p>}
+          <button onClick={submit} className="w-full mt-5 py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2" style={{ backgroundColor: '#2D5016', color: '#F5F0E8' }}>
+            {mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} strokeWidth={2} />
+          </button>
+          <p className="text-xs text-center mt-5" style={{ color: '#8B6347' }}>
+            {mode === 'login' ? 'New to Revive?' : 'Already have an account?'}{' '}
+            <button
+              onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
+              className="font-semibold underline underline-offset-4"
+              style={{ color: '#2D5016' }}
+            >
+              {mode === 'login' ? 'Create an account' : 'Sign in'}
+            </button>
+          </p>
+        </div>
+
+        <div className="hidden lg:block relative min-h-[620px]">
+          <img
+            src="https://images.unsplash.com/photo-1600340053706-32d1278206ef?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=80&w=1080&h=1200"
+            alt="Sunlight filtering through a green forest"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(26,52,9,0.85), rgba(26,52,9,0.08))' }} />
+          <div className="absolute inset-x-0 bottom-0 p-10 text-white">
+            <Leaf size={28} strokeWidth={1.5} color="#D4EBC8" className="mb-4" />
+            <blockquote className="text-2xl leading-snug mb-4" style={{ fontFamily: 'var(--font-display)' }}>
+              Every thoughtful choice gives the planet a little more room to breathe.
+            </blockquote>
+            <p className="text-sm" style={{ color: '#D4EBC8' }}>Join 12,000+ conscious shoppers across Mumbai</p>
+          </div>
+        </div>
+      </div>
+    </main>
   )
 }
 
@@ -1300,6 +1667,209 @@ function TrackOrderPage({
   )
 }
 
+type ChatMessage = {
+  id: number
+  sender: 'support' | 'user'
+  text: string
+}
+
+function SupportChatPage({ onBack }: { onBack: () => void }) {
+  const [draft, setDraft] = useState('')
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { id: 1, sender: 'support', text: 'Welcome to Revive Support. How can we help you today?' },
+  ])
+  const [waiting, setWaiting] = useState(false)
+  const messageListRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const list = messageListRef.current
+    if (list) list.scrollTop = list.scrollHeight
+  }, [messages, waiting])
+
+  const sendMessage = () => {
+    const text = draft.trim()
+    if (!text) return
+    setMessages(current => [...current, { id: Date.now(), sender: 'user', text }])
+    setDraft('')
+    setWaiting(true)
+    window.setTimeout(() => {
+      const query = text.toLowerCase()
+      const reply = query.includes('order')
+        ? 'You can track your order in My Orders 📦'
+        : query.includes('refund') || query.includes('return')
+          ? 'Refunds are processed within 5–7 working days after we receive the item.'
+          : query.includes('delivery')
+            ? 'Orders are usually delivered within 3–5 days.'
+            : query.includes('payment')
+              ? 'We accept cards, UPI and cash on delivery.'
+              : 'Thanks! Our team will get back to you shortly.'
+      setMessages(current => [...current, { id: Date.now() + 1, sender: 'support', text: reply }])
+      setWaiting(false)
+    }, 1000)
+  }
+
+  return (
+    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <div className="rounded-2xl border overflow-hidden flex flex-col support-chat" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }}>
+        <div className="px-4 sm:px-6 py-4 border-b flex items-center gap-3" style={{ backgroundColor: '#1A3409', borderColor: '#2D5016' }}>
+          <button onClick={onBack} className="w-11 h-11 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(212,235,200,0.12)' }} aria-label="Back to order">
+            <ArrowLeft size={19} strokeWidth={1.5} color="#D4EBC8" />
+          </button>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: '#D4EBC8' }}>
+            <MessageCircle size={19} strokeWidth={1.5} color="#2D5016" />
+          </div>
+          <div>
+            <h2 className="text-xl" style={{ color: '#F5F0E8' }}>Revive Support</h2>
+            <p className="text-xs" style={{ color: '#9CC982' }}>Typically replies instantly</p>
+          </div>
+        </div>
+
+        <div ref={messageListRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          {messages.map(message => (
+            <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className="max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
+                style={{
+                  backgroundColor: message.sender === 'user' ? '#2D5016' : '#EDE8DC',
+                  color: message.sender === 'user' ? '#F5F0E8' : '#1A3409',
+                  borderBottomRightRadius: message.sender === 'user' ? 4 : undefined,
+                  borderBottomLeftRadius: message.sender === 'support' ? 4 : undefined,
+                }}
+              >
+                {message.text}
+              </div>
+            </div>
+          ))}
+          {waiting && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl px-4 py-3 text-sm" style={{ backgroundColor: '#EDE8DC', color: '#8B6347' }}>Revive Support is typing…</div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 sm:p-4 border-t flex gap-2 sm:gap-3" style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9' }}>
+          <input
+            type="text"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && sendMessage()}
+            placeholder="Type your message"
+            className="flex-1 min-w-0 px-4 py-3 rounded-xl text-sm outline-none border"
+            style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9', color: '#1A3409' }}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!draft.trim()}
+            className="min-w-12 px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#2D5016', color: '#F5F0E8', opacity: draft.trim() ? 1 : 0.5 }}
+          >
+            <Send size={16} strokeWidth={1.5} />
+            <span className="hidden sm:inline">Send</span>
+          </button>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+function AboutPage({ onShop, onRecycle }: { onShop: () => void; onRecycle: () => void }) {
+  return (
+    <main>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12">
+        <div className="grid lg:grid-cols-2 rounded-3xl overflow-hidden" style={{ backgroundColor: '#1A3409' }}>
+          <div className="p-8 sm:p-12 lg:p-16 flex flex-col justify-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] mb-4" style={{ color: '#9CC982' }}>About Revive</p>
+            <h1 className="text-4xl sm:text-5xl leading-tight mb-5" style={{ color: '#F5F0E8' }}>
+              Making low-waste living feel natural
+            </h1>
+            <p className="text-sm sm:text-base leading-relaxed mb-7" style={{ color: '#A8C496' }}>
+              Revive is a Mumbai-born circular commerce platform connecting thoughtful products, responsible makers, and doorstep recycling in one simple experience. We help households reduce waste without asking them to compromise on quality, beauty, or convenience.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={onShop} className="px-6 py-3 rounded-xl text-sm font-semibold flex items-center gap-2" style={{ backgroundColor: '#D4EBC8', color: '#1A3409' }}>
+                Explore products <ArrowRight size={15} strokeWidth={2} />
+              </button>
+              <button onClick={onRecycle} className="px-6 py-3 rounded-xl text-sm font-semibold border flex items-center gap-2" style={{ borderColor: '#5C8A44', color: '#D4EBC8' }}>
+                <Recycle size={15} strokeWidth={1.5} /> Schedule a pickup
+              </button>
+            </div>
+          </div>
+          <div className="relative min-h-[360px] lg:min-h-[560px]">
+            <img
+              src="https://images.unsplash.com/photo-1526461591544-198d2190f270?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=80&w=1080&h=1100"
+              alt="Local Indian artisans working beside handmade clay pots"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/10" />
+          </div>
+        </div>
+      </section>
+
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
+        <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#5C8A44' }}>Why we exist</p>
+        <h2 className="text-3xl sm:text-4xl mb-6" style={{ color: '#1A3409' }}>Waste is a design problem, not an inevitability</h2>
+        <p className="text-base leading-relaxed max-w-3xl mx-auto" style={{ color: '#4A5C3C' }}>
+          Mumbai generates thousands of tonnes of solid waste every day, while people who want better alternatives often face confusing claims and inconvenient systems. Revive closes that gap. We carefully assess materials, packaging, durability, and end-of-life options, then pair conscious shopping with a rewards-led recycling service that keeps useful materials in circulation.
+        </p>
+      </section>
+
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
+        <div className="grid md:grid-cols-3 gap-5">
+          {[
+            {
+              Icon: Leaf,
+              title: 'Products with proof',
+              text: 'We prioritise durable, low-impact materials and clearly explain what each product saves compared with conventional alternatives.',
+            },
+            {
+              Icon: Users,
+              title: 'Local livelihoods',
+              text: 'We work with independent makers, women-led groups, and small Indian businesses to bring responsible production closer to home.',
+            },
+            {
+              Icon: Recycle,
+              title: 'Circular by design',
+              text: 'Our doorstep pickups turn sorted household waste into Green Points, helping materials return to use instead of going to landfill.',
+            },
+          ].map(value => (
+            <article key={value.title} className="rounded-2xl p-7 border" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }}>
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-5" style={{ backgroundColor: '#D4EBC8' }}>
+                <value.Icon size={21} strokeWidth={1.5} color="#2D5016" />
+              </div>
+              <h3 className="text-xl mb-3" style={{ color: '#1A3409' }}>{value.title}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: '#8B6347' }}>{value.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-16 sm:pb-24">
+        <div className="grid lg:grid-cols-[0.8fr_1.2fr] gap-8 lg:gap-14 items-center rounded-3xl p-8 sm:p-12" style={{ backgroundColor: '#EDE8DC' }}>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#5C8A44' }}>Our promise</p>
+            <h2 className="text-3xl mb-4" style={{ color: '#1A3409' }}>Progress you can see</h2>
+            <p className="text-sm leading-relaxed" style={{ color: '#4A5C3C' }}>
+              We believe sustainability should be measurable. That is why Revive shows environmental impact at the product and order level, uses plastic-conscious packaging, and rewards verified recycling by weight.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {[
+              { value: '100%', label: 'plastic-conscious packaging' },
+              { value: '6', label: 'waste streams rewarded' },
+              { value: 'Mumbai', label: 'our first community' },
+            ].map(stat => (
+              <div key={stat.label} className="rounded-2xl p-5" style={{ backgroundColor: '#F5F0E8' }}>
+                <p className="text-2xl mb-1" style={{ fontFamily: 'var(--font-display)', color: '#1A3409' }}>{stat.value}</p>
+                <p className="text-xs leading-snug" style={{ color: '#8B6347' }}>{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+}
+
 /* ─── App ────────────────────────────────────────────────────────────────── */
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([])
@@ -1317,6 +1887,12 @@ export default function App() {
   const [orders, setOrders] = useState<Order[]>(SAMPLE_ORDERS)
   const [ordersView, setOrdersView] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [loginView, setLoginView] = useState(false)
+  const [aboutView, setAboutView] = useState(false)
+  const [supportChatView, setSupportChatView] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [customerName, setCustomerName] = useState('')
+  const [newsletterEmail, setNewsletterEmail] = useState('')
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0)
 
@@ -1354,6 +1930,9 @@ export default function App() {
     setOrdersView(true)
     setSelectedOrder(null)
     setGreenPointsView(false)
+    setLoginView(false)
+    setAboutView(false)
+    setSupportChatView(false)
     setActiveNav('orders')
     setMobileMenuOpen(false)
   }
@@ -1362,6 +1941,9 @@ export default function App() {
     setOrdersView(false)
     setSelectedOrder(null)
     setGreenPointsView(false)
+    setLoginView(false)
+    setAboutView(false)
+    setSupportChatView(false)
     setActiveNav('shop')
     setMobileMenuOpen(false)
   }
@@ -1383,20 +1965,87 @@ export default function App() {
     setIsCartOpen(true)
   }
 
+  const openAbout = () => {
+    setAboutView(true)
+    setLoginView(false)
+    setOrdersView(false)
+    setSelectedOrder(null)
+    setGreenPointsView(false)
+    setSupportChatView(false)
+    setActiveNav('about')
+    setMobileMenuOpen(false)
+  }
+
+  const logout = () => {
+    setIsLoggedIn(false)
+    setCustomerName('')
+    openShop()
+    showToast('You have been logged out')
+  }
+
   const handleScheduled = () => {
     setGreenPoints(p => p + 45)
     showToast('Pickup scheduled! You earned +45 Green Points')
+  }
+
+  const openImpact = () => {
+    openShop()
+    setActiveNav('impact')
+    window.setTimeout(() => document.getElementById('environmental-promise')?.scrollIntoView({ behavior: 'smooth' }), 0)
+  }
+
+  const openProfile = () => {
+    if (isLoggedIn) openOrders()
+    else {
+      setLoginView(true)
+      setAboutView(false)
+      setOrdersView(false)
+      setSelectedOrder(null)
+      setGreenPointsView(false)
+      setSupportChatView(false)
+      setActiveNav('login')
+    }
+  }
+
+  const handleFooterLink = (link: string) => {
+    if (link === 'Schedule Pickup') {
+      setRecycleOpen(true)
+      return
+    }
+    if (['How it Works', 'Earn Points', 'Redeem Points', 'Points History', 'Green Leaderboard'].includes(link)) {
+      setGreenPointsView(true)
+      setOrdersView(false)
+      setSelectedOrder(null)
+      setAboutView(false)
+      setActiveNav('rewards')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (['About Revive', 'Our Mission', 'Sustainability Report'].includes(link)) {
+      openAbout()
+      return
+    }
+    if (['All Products', 'Reusable Products', 'Upcycled Goods', 'Plastic-Free', 'Sustainable Living', 'New Arrivals'].includes(link)) {
+      const categoryByLink: Record<string, string> = {
+        'Reusable Products': 'Reusable', 'Upcycled Goods': 'Upcycled', 'Plastic-Free': 'Plastic-Free', 'Sustainable Living': 'Sustainable',
+      }
+      setActiveCategory(categoryByLink[link] ?? 'all')
+      openShop()
+      window.setTimeout(() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }), 0)
+      return
+    }
+    showToast(`${link} information will be available soon`)
   }
 
   const filteredProducts = activeCategory === 'all' ? PRODUCTS : PRODUCTS.filter(p => p.category === activeCategory)
 
   /* ─── Render ─────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#F5F0E8', fontFamily: 'var(--font-body)' }}>
+    <div className="min-h-screen mobile-app-shell" style={{ backgroundColor: '#F5F0E8', fontFamily: 'var(--font-body)' }}>
 
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed bottom-8 left-1/2 z-[60] -translate-x-1/2 px-5 py-3 rounded-2xl shadow-lg text-sm font-semibold flex items-center gap-2" style={{ backgroundColor: '#2D5016', color: '#F5F0E8' }}>
+        <div className="fixed bottom-24 md:bottom-8 left-1/2 z-[60] -translate-x-1/2 px-5 py-3 rounded-2xl shadow-lg text-sm font-semibold flex items-center gap-2" style={{ backgroundColor: '#2D5016', color: '#F5F0E8' }}>
           <Leaf size={14} strokeWidth={1.5} color="#9CC982" />
           {toastMsg}
         </div>
@@ -1417,7 +2066,7 @@ export default function App() {
       </div>
 
       {/* Header */}
-      <header className="sticky top-0 z-30 border-b" style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9' }}>
+      <header className="hidden md:block sticky top-0 z-30 border-b" style={{ backgroundColor: '#F5F0E8', borderColor: '#D4C5A9' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
@@ -1442,11 +2091,17 @@ export default function App() {
                   onClick={() => {
                     if (link.id === 'orders') {
                       openOrders()
+                    } else if (link.id === 'about') {
+                      openAbout()
+                    } else if (link.id === 'impact') {
+                      openImpact()
                     } else {
                       setActiveNav(link.id)
                       setOrdersView(false)
                       setSelectedOrder(null)
                       setGreenPointsView(link.id === 'rewards')
+                      setLoginView(false)
+                      setAboutView(false)
                     }
                   }}
                   className="text-sm font-medium pb-0.5 border-b-2 transition-colors"
@@ -1460,7 +2115,7 @@ export default function App() {
             {/* Right Actions */}
             <div className="flex items-center gap-3">
               <button
-                onClick={() => { setOrdersView(false); setSelectedOrder(null); setGreenPointsView(true); setActiveNav('rewards') }}
+                onClick={() => { setOrdersView(false); setSelectedOrder(null); setGreenPointsView(true); setLoginView(false); setAboutView(false); setActiveNav('rewards') }}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-transform hover:scale-105"
                 style={{ backgroundColor: '#D4EBC8', color: '#1A3409' }}
               >
@@ -1476,6 +2131,36 @@ export default function App() {
                 <Recycle size={13} strokeWidth={1.5} color="#D4EBC8" />
                 Recycle &amp; Earn
               </button>
+
+              <button
+                onClick={() => {
+                  if (isLoggedIn) {
+                    openOrders()
+                  } else {
+                    setLoginView(true)
+                    setAboutView(false)
+                    setOrdersView(false)
+                    setSelectedOrder(null)
+                    setGreenPointsView(false)
+                    setActiveNav('login')
+                  }
+                }}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold border"
+                style={{ borderColor: '#D4C5A9', color: '#1A3409' }}
+              >
+                <User size={14} strokeWidth={1.5} />
+                {isLoggedIn ? customerName : 'Log in'}
+              </button>
+
+              {isLoggedIn && (
+                <button
+                  onClick={logout}
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold"
+                  style={{ color: '#8B6347' }}
+                >
+                  <LogOut size={14} strokeWidth={1.5} /> Log out
+                </button>
+              )}
 
               <button
                 onClick={() => setIsCartOpen(true)}
@@ -1506,13 +2191,36 @@ export default function App() {
                 <button onClick={openOrders} className="w-full text-left py-2.5 px-2 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ color: '#2D5016' }}>
                   <Package size={15} strokeWidth={1.5} color="#2D5016" /> My Orders
                 </button>
-                <button onClick={() => { setOrdersView(false); setSelectedOrder(null); setGreenPointsView(true); setActiveNav('rewards'); setMobileMenuOpen(false) }} className="w-full text-left py-2.5 px-2 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ color: '#2D5016' }}>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    if (isLoggedIn) openOrders()
+                    else {
+                      setLoginView(true)
+                      setAboutView(false)
+                      setOrdersView(false)
+                      setSelectedOrder(null)
+                      setGreenPointsView(false)
+                      setActiveNav('login')
+                    }
+                  }}
+                  className="w-full text-left py-2.5 px-2 rounded-lg text-sm font-semibold flex items-center gap-2"
+                  style={{ color: '#2D5016' }}
+                >
+                  <User size={15} strokeWidth={1.5} color="#2D5016" /> {isLoggedIn ? customerName : 'Log in'}
+                </button>
+                {isLoggedIn && (
+                  <button onClick={logout} className="w-full text-left py-2.5 px-2 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ color: '#8B6347' }}>
+                    <LogOut size={15} strokeWidth={1.5} color="#8B6347" /> Log out
+                  </button>
+                )}
+                <button onClick={() => { setOrdersView(false); setSelectedOrder(null); setGreenPointsView(true); setLoginView(false); setAboutView(false); setActiveNav('rewards'); setMobileMenuOpen(false) }} className="w-full text-left py-2.5 px-2 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ color: '#2D5016' }}>
                   <Leaf size={15} strokeWidth={1.5} color="#2D5016" /> Green Points: {greenPoints} pts
                 </button>
-                <button className="w-full text-left py-2.5 px-2 rounded-lg text-sm flex items-center gap-2" style={{ color: '#8B6347' }}>
+                <button onClick={() => { openImpact(); setMobileMenuOpen(false) }} className="w-full text-left py-2.5 px-2 rounded-lg text-sm flex items-center gap-2" style={{ color: '#8B6347' }}>
                   <Globe size={15} strokeWidth={1.5} color="#8B6347" /> Our Impact
                 </button>
-                <button className="w-full text-left py-2.5 px-2 rounded-lg text-sm flex items-center gap-2" style={{ color: '#8B6347' }}>
+                <button onClick={openAbout} className="w-full text-left py-2.5 px-2 rounded-lg text-sm flex items-center gap-2" style={{ color: '#8B6347' }}>
                   <Leaf size={15} strokeWidth={1.5} color="#8B6347" /> About Revive
                 </button>
               </div>
@@ -1522,11 +2230,27 @@ export default function App() {
       </header>
 
       {/* ── Green Points Dashboard ──────────────────────────────────────── */}
-      {selectedOrder ? (
+      {loginView ? (
+        <LoginPage
+          onBack={openShop}
+          onForgotPassword={() => showToast('Password reset instructions have been sent to your email')}
+          onLogin={(name, isNewAccount) => {
+            const formattedName = name.charAt(0).toUpperCase() + name.slice(1)
+            setCustomerName(formattedName)
+            setIsLoggedIn(true)
+            openShop()
+            showToast(isNewAccount ? `Account created! Welcome, ${formattedName}` : `Welcome back, ${formattedName}`)
+          }}
+        />
+      ) : supportChatView ? (
+        <SupportChatPage onBack={() => setSupportChatView(false)} />
+      ) : aboutView ? (
+        <AboutPage onShop={openShop} onRecycle={() => setRecycleOpen(true)} />
+      ) : selectedOrder ? (
         <TrackOrderPage
           order={selectedOrder}
           onBack={() => { setSelectedOrder(null); setOrdersView(true) }}
-          onNeedHelp={() => showToast('Our support team will contact you shortly')}
+          onNeedHelp={() => setSupportChatView(true)}
           onReorder={reorder}
         />
       ) : ordersView ? (
@@ -1716,7 +2440,7 @@ export default function App() {
           </section>
 
           {/* ── Green Points Banner ───────────────────────────────────────── */}
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          <section id="environmental-promise" className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
             <div className="rounded-3xl overflow-hidden" style={{ backgroundColor: '#1A3409' }}>
               <div className="grid md:grid-cols-2 gap-0">
                 <div className="p-10 md:p-14">
@@ -1852,11 +2576,25 @@ export default function App() {
               </p>
               <div className="flex gap-3 max-w-md mx-auto">
                 <input
+                  type="email"
+                  value={newsletterEmail}
+                  onChange={e => setNewsletterEmail(e.target.value)}
                   placeholder="your@email.com"
                   className="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ backgroundColor: 'rgba(245,240,232,0.15)', color: '#F5F0E8', border: '1.5px solid rgba(212,235,200,0.3)', fontFamily: 'var(--font-body)' }}
                 />
-                <button className="px-6 py-3 rounded-xl font-semibold text-sm whitespace-nowrap flex items-center gap-2" style={{ backgroundColor: '#D4EBC8', color: '#1A3409', fontFamily: 'var(--font-body)' }}>
+                <button
+                  onClick={() => {
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newsletterEmail.trim())) {
+                      showToast('Enter a valid email address')
+                      return
+                    }
+                    setNewsletterEmail('')
+                    showToast('You are subscribed to Revive updates')
+                  }}
+                  className="px-6 py-3 rounded-xl font-semibold text-sm whitespace-nowrap flex items-center gap-2"
+                  style={{ backgroundColor: '#D4EBC8', color: '#1A3409', fontFamily: 'var(--font-body)' }}
+                >
                   Subscribe <ArrowRight size={14} strokeWidth={2} color="#1A3409" />
                 </button>
               </div>
@@ -1879,9 +2617,9 @@ export default function App() {
                   </p>
                   <div className="flex gap-3">
                     {[Image, MessageCircle, Briefcase, Play].map((Icon, i) => (
-                      <div key={i} className="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(212,235,200,0.1)' }}>
+                      <button key={i} onClick={() => showToast('Revive social channel opening soon')} className="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(212,235,200,0.1)' }} aria-label="Revive social channel">
                         <Icon size={16} strokeWidth={1.5} color="#9CC982" />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1894,7 +2632,7 @@ export default function App() {
                     <h4 className="text-sm font-bold mb-4" style={{ color: '#D4EBC8' }}>{col.title}</h4>
                     <ul className="space-y-2">
                       {col.links.map(link => (
-                        <li key={link}><a href="#" className="text-sm transition-colors" style={{ color: '#7BAF60', textDecoration: 'none' }}>{link}</a></li>
+                        <li key={link}><button onClick={() => handleFooterLink(link)} className="text-sm transition-colors text-left" style={{ color: '#7BAF60' }}>{link}</button></li>
                       ))}
                     </ul>
                   </div>
@@ -1904,7 +2642,7 @@ export default function App() {
               <div className="border-t pt-8 flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderColor: 'rgba(212,235,200,0.15)' }}>
                 <div className="flex flex-wrap gap-4 text-xs" style={{ color: '#5C8A44' }}>
                   {['Privacy Policy', 'Terms of Service', 'Refund Policy', 'Shipping Policy'].map(l => (
-                    <a key={l} href="#" style={{ color: '#5C8A44', textDecoration: 'none' }}>{l}</a>
+                    <button key={l} onClick={() => showToast(`${l} information will be available soon`)} style={{ color: '#5C8A44' }}>{l}</button>
                   ))}
                 </div>
                 <div className="flex items-center gap-3">
@@ -1920,6 +2658,24 @@ export default function App() {
           </footer>
         </>
       )}
+
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t mobile-bottom-nav" style={{ backgroundColor: '#FAF7F2', borderColor: '#D4C5A9' }} aria-label="Mobile navigation">
+        {[
+          { id: 'home', label: 'Home', Icon: Home, action: () => { openShop(); setActiveNav('home'); window.scrollTo({ top: 0, behavior: 'smooth' }) } },
+          { id: 'shop', label: 'Shop', Icon: Leaf, action: () => { openShop(); window.setTimeout(() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }), 0) } },
+          { id: 'cart', label: 'Cart', Icon: ShoppingBag, action: () => setIsCartOpen(true) },
+          { id: 'profile', label: 'Profile', Icon: User, action: openProfile },
+        ].map(item => {
+          const isActive = item.id === 'cart' ? isCartOpen : item.id === 'profile' ? loginView || ordersView || Boolean(selectedOrder) : activeNav === item.id
+          return (
+            <button key={item.id} onClick={item.action} className="relative flex-1 min-h-16 flex flex-col items-center justify-center gap-1 text-xs font-semibold" style={{ color: isActive ? '#1A3409' : '#8B6347' }}>
+              <item.Icon size={21} strokeWidth={1.5} color={isActive ? '#2D5016' : '#8B6347'} />
+              {item.label}
+              {item.id === 'cart' && cartCount > 0 && <span className="absolute top-1.5 left-1/2 ml-2 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ backgroundColor: '#5C8A44', color: 'white' }}>{cartCount}</span>}
+            </button>
+          )
+        })}
+      </nav>
 
       {/* ── Overlays ─────────────────────────────────────────────────────── */}
       {selectedProduct && (
@@ -1941,6 +2697,8 @@ export default function App() {
             setSelectedOrder(order)
             setOrdersView(false)
             setGreenPointsView(false)
+            setLoginView(false)
+            setAboutView(false)
             setActiveNav('orders')
           }}
           greenPoints={greenPoints}
